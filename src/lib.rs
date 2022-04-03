@@ -45,6 +45,8 @@
 //! This version of itertools requires Rust 1.32 or later.
 #![doc(html_root_url="https://docs.rs/itertools/0.8/")]
 
+#![feature(maybe_uninit_array_assume_init)]
+#![feature(maybe_uninit_uninit_array)]
 #[cfg(not(feature = "use_std"))]
 extern crate core as std;
 
@@ -82,6 +84,7 @@ mod impl_macros;
 // for compatibility with no std and macros
 #[doc(hidden)]
 pub use std::iter as __std_iter;
+use std::mem::MaybeUninit;
 
 /// The concrete iterator types.
 pub mod structs {
@@ -1730,6 +1733,27 @@ pub trait Itertools : Iterator {
             },
             _ => None
         }
+    }
+
+    /// Collects into an array of a specified size using const generics. This method does not allocate. The number of elements  in the iterator **must be exactly equal** to that of the specified array size. Otherwise this method will panic.
+    ///
+    /// ```
+    /// use itertools::Itertools;
+    /// let takes_four_fives = std::iter::repeat(5).take(4).collect_array::<4>();
+    /// assert_eq!([5; 4], takes_four_fives);
+    /// ```
+    fn collect_array<const N: usize>(self) -> [Self::Item; N]
+    where
+        Self: Sized,
+    {
+        let mut arr = MaybeUninit::uninit_array();
+        arr.iter_mut().zip_eq(self).for_each(|(slot, elem)| {
+            slot.write(elem);
+        });
+
+        // SAFETY:  Every element of the array is initialized because zip_eq verifies that the array and iterator are the same length.
+        let arr = unsafe { MaybeUninit::array_assume_init(arr) };
+        arr
     }
 
 
